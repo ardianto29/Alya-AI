@@ -10,7 +10,9 @@ CONFIG_DIR = Path(__file__).resolve().parent.parent / "config"
 
 
 def load_persona() -> str:
-    return (CONFIG_DIR / "persona.txt").read_text(encoding="utf-8").strip()
+    local = CONFIG_DIR / "persona.local.txt"
+    path = local if local.exists() else CONFIG_DIR / "persona.txt"
+    return path.read_text(encoding="utf-8").strip()
 
 
 class AlyaClient:

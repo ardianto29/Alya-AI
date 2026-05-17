@@ -2,6 +2,9 @@
 .env
 *.key
 
+# Personal overrides (e.g., persona.local.txt)
+*.local.*
+
 # Python
 __pycache__/
 *.py[cod]
