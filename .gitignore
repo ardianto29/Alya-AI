@@ -31,6 +31,9 @@ data/
 # Voice samples (Fish Audio derived + raw backups)
 config/voice/
 
+# Avatar / character images (kemungkinan fan-art berhak cipta — keep private)
+config/images/
+
 # Audio files
 *.wav
 *.mp3
