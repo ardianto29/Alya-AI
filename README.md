@@ -26,8 +26,12 @@ pakai voice clone yang mirip suara aslinya.
 │         ▼       │ ──────►│                      │
 │  TTS request    │        │                      │
 │         ◄───────│ WAV    │                      │
-│  Play speaker   │        └──────────────────────┘
-└─────────────────┘
+│  Play speaker   │        │                      │
+│                 │        │                      │
+│  Tahan 🎙 ───► │ HTTP   │  faster-whisper :8002│
+│  (rekam audio)  │ ──────►│  (Speech-to-text)    │
+│         ◄───────│ text   │                      │
+└─────────────────┘        └──────────────────────┘
 ```
 
 - **Laptop**: thin client. Ngirim text ke server, terima text + audio.
@@ -124,6 +128,44 @@ Verify: `curl http://<SERVER_IP>:8001/health` → mestinya keluar `{"status":"ok
 > ke file + reference text. Sesuaikan nama file & teks dengan sample-mu sendiri.
 > Reference text harus exact transcript dari audio sample.
 
+### Langkah 2b (optional) — Setup STT (di server, untuk voice input)
+
+Voice input pakai [faster-whisper](https://github.com/SYSTRAN/faster-whisper)
+(CTranslate2 backend, jauh lebih cepet dari vanilla whisper). Push-to-talk
+dari web UI: tahan tombol 🎙, lepas, audio dikirim ke server, transcribe ke
+text, auto-isi ke input field.
+
+```bash
+# venv terpisah biar TTS gak ke-pengaruh
+mkdir -p ~/whisper-env && cd ~/whisper-env
+uv venv --python 3.12 .venv
+source .venv/bin/activate
+
+# faster-whisper + CUDA libs + FastAPI
+uv pip install faster-whisper fastapi 'uvicorn[standard]' python-multipart \
+               nvidia-cublas-cu12 nvidia-cudnn-cu12
+```
+
+Copy `stt_server/server.py` dari repo ini ke `~/whisper-env/server.py`, terus:
+
+```bash
+cd ~/whisper-env
+source .venv/bin/activate
+uvicorn server:app --host 0.0.0.0 --port 8002
+```
+
+Pertama run akan download model `large-v3` (~3GB ke `~/.cache/huggingface/`).
+Run berikutnya cuma ~2 detik load dari cache.
+
+Verify: `curl http://<SERVER_IP>:8002/health` → `{"status":"ok","model_loaded":true,...}`
+
+Env override (optional):
+- `STT_MODEL` — default `large-v3`. Bisa `distil-large-v3` (lebih cepet, bagus
+  untuk EN). `medium`, `small` kalau VRAM ketat.
+- `STT_DEVICE` — default `cuda`. Ganti `cpu` kalau ga ada GPU (jauh lebih lambat).
+- `STT_COMPUTE` — default `float16`. `int8_float16` lebih hemat VRAM.
+- `STT_DEFAULT_LANG` — default `ja`. Pakai `auto` untuk language detection.
+
 ### Langkah 3 — Setup Client (di laptop)
 
 ```bash
@@ -147,6 +189,11 @@ MODEL_NAME=<model-id-di-lm-studio>       # e.g. qwen/qwen3-14b
 TTS_URL=http://<SERVER_IP>:8001
 TTS_VOICE=calm                            # nama voice di server.py VOICES dict
 TTS_ENABLED=true
+
+# Optional — kalau pakai STT server (Langkah 2b)
+STT_URL=http://<SERVER_IP>:8002
+STT_LANGUAGE=ja                           # ja / id / en / auto
+STT_ENABLED=true
 ```
 
 ---
@@ -169,13 +216,25 @@ Commands:
 - `/tts on|off` — nyalain/matiin voice output
 - `/help`, `/quit`
 
-### Web UI (text-only, gak ada voice)
+### Web UI
 
 ```bash
 uvicorn src.server:app --host 127.0.0.1 --port 8000
 ```
 
 Buka browser → http://127.0.0.1:8000/
+
+Fitur:
+- **Chat text** — ketik di input, Enter untuk kirim.
+- **Voice input (push-to-talk)** — tahan tombol 🎙 di sebelah kanan input,
+  ngomong, lepas. Audio dikirim ke STT server, hasil transcribe auto-fill
+  ke input. Tekan Enter untuk kirim. Butuh `STT_URL` di `.env`.
+- **Reset** — clear history.
+
+> **Note browser:** MediaRecorder API butuh **HTTPS** atau **localhost**.
+> Kalau buka via IP LAN (`http://192.168.x.x:8000/`), mic akan ditolak
+> browser. Solusi: SSH port-forward (`ssh -L 8000:localhost:8000 <server>`)
+> atau pakai reverse proxy dengan TLS.
 
 ---
 
@@ -210,12 +269,15 @@ Alya-AI/
 ├── src/
 │   ├── chat.py         CLI chat loop dengan integrasi TTS
 │   ├── llm_client.py   wrapper LM Studio / OpenAI-compatible
-│   ├── server.py       FastAPI web server (text UI)
+│   ├── server.py       FastAPI web server (chat + voice input)
+│   ├── stt.py          faster-whisper HTTP client
 │   └── tts.py          F5-TTS HTTP client + audio playback
 ├── tts_server/
 │   └── server.py       F5-TTS service yang jalan di GPU server
+├── stt_server/
+│   └── server.py       faster-whisper service yang jalan di GPU server
 └── web/
-    └── index.html      web UI (text-only)
+    └── index.html      web UI (chat + push-to-talk mic)
 ```
 
 ---
@@ -226,6 +288,7 @@ Alya-AI/
 |---|---|---|
 | LLM brain | LM Studio (OpenAI-compatible) | Server |
 | Voice synth | F5-TTS (open source) | Server |
+| Voice input | faster-whisper (CTranslate2, large-v3) | Server |
 | Audio playback | paplay/aplay/ffplay | Client |
 | Chat UI | Python + rich (CLI) atau FastAPI + vanilla web | Client |
 | Voice samples | Bring your own (Fish Audio free tier optional) | Server |
@@ -252,7 +315,7 @@ Alya-AI/
 
 - [x] Phase A: Text chatbot (CLI + web)
 - [x] Phase D: TTS voice output
-- [ ] Phase C: STT voice input (next)
+- [x] Phase C: STT voice input (push-to-talk dari web UI)
 - [ ] Phase E: Wake word detection
 - [ ] Phase F: Tool calling (open app, search, dll)
 
@@ -262,5 +325,6 @@ Alya-AI/
 
 - Voice clone engine: [F5-TTS](https://github.com/SWivid/F5-TTS) by SWivid
 - Japanese model fork: [Jmica/F5TTS](https://huggingface.co/Jmica/F5TTS)
+- Speech recognition: [faster-whisper](https://github.com/SYSTRAN/faster-whisper) by SYSTRAN
 - LLM runtime: [LM Studio](https://lmstudio.ai/)
 - Character inspiration: Alisa Mikhailovna Kujou from *Tokidoki Bosotto Russia-go de Dereru Tonari no Alya-san* (Roshidere)
