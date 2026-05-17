@@ -21,8 +21,9 @@ data/
 *.log
 *.jsonl
 
-# Markdown docs (kept private)
+# Markdown docs (kept private), kecuali README
 *.md
+!README.md
 
 # Claude Code skills and settings
 .claude/
