@@ -1,0 +1,32 @@
+# Secrets
+.env
+*.key
+
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.venv/
+venv/
+
+# IDE
+.vscode/
+.idea/
+
+# Data (history bisa sensitif)
+data/
+*.log
+*.jsonl
+
+# Markdown docs (kept private)
+*.md
+
+# Claude Code skills and settings
+.claude/
+
+# Voice samples (Fish Audio derived + raw backups)
+config/voice/
+
+# Audio files
+*.wav
+*.mp3
