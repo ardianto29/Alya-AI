@@ -29,7 +29,7 @@ class TTSClient:
         self.enabled = os.environ.get("TTS_ENABLED", "true").lower() in {"1", "true", "yes"}
         timeout = float(os.environ.get("TTS_TIMEOUT", "60"))
         self.client = httpx.Client(timeout=timeout)
-        self._player = self._detect_player()
+        self._player: list[str] | None = None
 
     @staticmethod
     def _detect_player() -> list[str]:
@@ -49,6 +49,8 @@ class TTSClient:
         return r.content
 
     def play(self, audio: bytes) -> None:
+        if self._player is None:
+            self._player = self._detect_player()
         with tempfile.NamedTemporaryFile(suffix=".wav", delete=False) as f:
             f.write(audio)
             path = Path(f.name)
