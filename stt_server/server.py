@@ -29,6 +29,10 @@ log = logging.getLogger("alya-stt")
 MODEL_SIZE = os.getenv("STT_MODEL", "large-v3")
 DEVICE = os.getenv("STT_DEVICE", "cuda")
 COMPUTE_TYPE = os.getenv("STT_COMPUTE", "float16")
+# Batas thread saat DEVICE=cpu — biar inference gak monopoli semua core (Ultra 7
+# 270K punya 24 core, default 8 supaya sisa 16 free buat OS + service lain).
+# Ignored saat DEVICE=cuda.
+CPU_THREADS = int(os.getenv("STT_CPU_THREADS", "8"))
 DEFAULT_LANG = os.getenv("STT_DEFAULT_LANG", "ja")
 # initial_prompt = bias Whisper supaya kenal nama/istilah uncommon.
 # Tanpa ini, "Alya" sering ditranskrip jadi "Aliya"/"Alia"/"Aliyah".
@@ -49,7 +53,11 @@ def load_model() -> None:
     global model
     log.info("loading faster-whisper %s on %s (%s)", MODEL_SIZE, DEVICE, COMPUTE_TYPE)
     t0 = time.time()
-    model = WhisperModel(MODEL_SIZE, device=DEVICE, compute_type=COMPUTE_TYPE)
+    kwargs = {"device": DEVICE, "compute_type": COMPUTE_TYPE}
+    if DEVICE == "cpu":
+        kwargs["cpu_threads"] = CPU_THREADS
+        log.info("cpu_threads=%d (cap supaya nggak monopoli semua core)", CPU_THREADS)
+    model = WhisperModel(MODEL_SIZE, **kwargs)
     log.info("model loaded in %.1fs", time.time() - t0)
 
 
@@ -61,6 +69,7 @@ def health() -> dict:
         "model": MODEL_SIZE,
         "device": DEVICE,
         "compute_type": COMPUTE_TYPE,
+        "cpu_threads": CPU_THREADS if DEVICE == "cpu" else None,
     }
 
 
