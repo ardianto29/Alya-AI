@@ -688,9 +688,12 @@
       }
       const cursor = alyaBubble.querySelector('.cursor');
       if (cursor) cursor.remove();
-      if (!buf.trim()) {
+      const alyaText = buf.trim();
+      if (!alyaText) {
         alyaBubble.textContent = '(kosong — coba lagi)';
         alyaBubble.classList.add('error');
+      } else {
+        playTTS(alyaText).catch((e) => console.warn('TTS error:', e));
       }
       refreshMeta();
     } catch (e) {
@@ -701,6 +704,24 @@
       sendBtn.disabled = false;
       inputEl.focus();
     }
+  }
+
+  async function playTTS(text) {
+    const res = await fetch('/api/tts', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ text }),
+    });
+    if (!res.ok) { console.warn('TTS HTTP', res.status); return; }
+    const wavBlob = await res.blob();
+    const url = URL.createObjectURL(wavBlob);
+    const audio = new Audio(url);
+    await new Promise((resolve) => {
+      audio.onended = resolve;
+      audio.onerror = resolve;
+      audio.play().catch(resolve);
+    });
+    URL.revokeObjectURL(url);
   }
 
   inputEl.addEventListener('keydown', (e) => {
