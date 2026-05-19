@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import os
+import random
 from datetime import datetime
 from pathlib import Path
 from typing import Iterator
@@ -65,17 +66,51 @@ def _qualifier(hour: int, minute: int) -> str:
     return ""
 
 
+def _time_examples(tod: str) -> str:
+    """Positive examples by time-of-day — example > rule."""
+    if tod == "pagi":
+        return (
+            "  ✅ 'おはよう、ディディくん。今日も早いのね。(Pagi, Didi-kun. Hari ini cepet juga.)'\n"
+            "  ✅ 'おはよう。朝ご飯は？(Pagi. Udah sarapan?)'"
+        )
+    if tod == "siang":
+        return (
+            "  ✅ 'こんにちは、ディディくん。ご飯食べた？(Hai Didi-kun. Udah makan siang?)'\n"
+            "  ✅ 'こんにちは。今日は何してるの？(Hai. Lagi ngapain hari ini?)'"
+        )
+    if tod == "sore":
+        return (
+            "  ✅ 'こんにちは、ディディくん。今日はどうだった？(Hai Didi-kun. Hari ini gimana?)'\n"
+            "  ✅ 'こんにちは。お疲れさま。(Hai. Capek ya hari ini.)'"
+        )
+    if tod == "malam":
+        return (
+            "  ✅ 'こんばんは、ディディくん。今日もお疲れさま。(Selamat malam, Didi-kun. Capek juga ya hari ini.)'\n"
+            "  ✅ 'こんばんは。晩ご飯食べた？(Malam. Udah makan malem?)'"
+        )
+    return (
+        "  ✅ 'こんばんは。まだ起きてるのね。(Malam. Masih bangun ya.)'\n"
+        "  ✅ 'こんばんは、ディディくん。眠れないの？(Malam Didi-kun. Gak bisa tidur?)'"
+    )
+
+
 def current_time_context() -> str:
     now = datetime.now(_TZ)
     day = _DAYS_ID[now.weekday()]
     month = _MONTHS_ID[now.month]
+    tod = _time_of_day(now.hour)
+    qual = _qualifier(now.hour, now.minute)
+    greet_jp = {"pagi": "おはよう", "siang": "こんにちは", "sore": "こんにちは", "malam": "こんばんは", "dini hari": "こんばんは"}[tod]
+    examples = _time_examples(tod)
     return (
-        f"[Waktu] {day} {now.day} {month} {now.year}, {now.strftime('%H:%M')} WIB.\n"
-        "[Cara ngobrol] Engage SPESIFIK ke statement terakhir user. "
-        "Kalau user cerita makanan, bahas makanan-nya (rasanya, di mana). "
-        "Kalau sapa kasual, sapa balik. Kalau nanya, jawab. "
-        "JANGAN auto-comment soal begadang/tidur/kesehatan kecuali user sendiri yang ngangkat. "
-        "Pernah ngomentari topik X di session ini? JANGAN ulang lagi — cari sudut lain."
+        f"[Waktu] {day} {now.day} {month} {now.year}, {now.strftime('%H:%M')} WIB — sekarang {tod}. {qual}\n"
+        f"[Greeting] Sapa balik pakai '{greet_jp}' (bukan おはよう/こんばんは kecuali pagi/malam beneran).\n"
+        f"[Contoh OK untuk {tod}]\n{examples}\n"
+        f"[Larangan jam {now.strftime('%H:%M')}] Sekarang {tod}, BUKAN tengah malam — DILARANG sebut "
+        f"夜更かし/遅くまで/体に悪い/早く寝/begadang/kurang tidur/遅刻/telat/bolos/skip kelas/PR "
+        f"kecuali Didi sendiri yang ngangkat duluan. Lokasi Didi tidak diketahui — JANGAN asumsi dia di kelas/sekolah.\n"
+        "[Engage] Respons spesifik ke pesan terakhir Didi. Sapa kasual → sapa balik. Tanya → jawab. "
+        "Topik yang udah dibahas di session ini? Jangan diulang."
     )
 
 
@@ -120,6 +155,8 @@ class AlyaClient:
 
     def stream_reply(self, user_input: str) -> Iterator[str]:
         messages = self._build_messages(user_input)
+        # Seed random per request. LM Studio default ke seed tetap kalau gak
+        # di-pass → output byte-identical untuk prompt yang sama (lock loop).
         stream = self.client.chat.completions.create(
             model=self.model,
             messages=messages,
@@ -128,6 +165,7 @@ class AlyaClient:
             frequency_penalty=self.frequency_penalty,
             presence_penalty=self.presence_penalty,
             max_tokens=self.max_tokens,
+            seed=random.randint(0, 2**31 - 1),
             stream=True,
         )
         chunks: list[str] = []
